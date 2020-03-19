@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<roslaunch>
+
+  <node pkg="mouse_cursor" type="mouse_cursor" name="mouse_cursor"/>
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find mouse_cursor)/config/SETTING.rviz"/>
+
+</roslaunch>
