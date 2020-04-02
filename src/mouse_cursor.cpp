@@ -17,13 +17,28 @@
 #include <tf/transform_listener.h>
 #include <pcl_ros/transforms.h>
 
+#include <tf/transform_broadcaster.h>
+
+#include <pcl/registration/icp.h>
+
+void print4x4Matrix (const Eigen::Matrix4d & matrix)
+{
+  printf ("Rotation matrix :\n");
+  printf ("    | %6.3f %6.3f %6.3f | \n", matrix (0, 0), matrix (0, 1), matrix (0, 2));
+  printf ("R = | %6.3f %6.3f %6.3f | \n", matrix (1, 0), matrix (1, 1), matrix (1, 2));
+  printf ("    | %6.3f %6.3f %6.3f | \n", matrix (2, 0), matrix (2, 1), matrix (2, 2));
+  printf ("Translation vector :\n");
+  printf ("t = < %6.3f, %6.3f, %6.3f >\n\n", matrix (0, 3), matrix (1, 3), matrix (2, 3));
+}
+
+
 static const std::string OPENCV_WINDOW = "Image window";
 cv::Mat input_img_;
 pcl::PointCloud<pcl::PointXYZ> input_cloud_, detect_cloud_, dobot_cloud_;
 std::vector<double> detect_distances_, dobot_distances_;
 std::string camera_frame_ = "camera_rgb_optical_frame";
 std::string robot_frame_ = "base_link";
-bool debug_distance_ = true;
+bool debug_distance_ = false;
 tf::StampedTransform transform;
 
 //マウス入力用のパラメータ
@@ -81,6 +96,13 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "mouse_cursor");
     ros::NodeHandle nh;
+
+    static tf::TransformBroadcaster br;
+    tf::Transform transform2;
+    transform2.setOrigin(tf::Vector3(0.18, 0, 0.2));
+    tf::Quaternion q;
+    q.setRPY(M_PI, 0, M_PI/2);
+    transform2.setRotation(q);
 
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber image_sub = it.subscribe("/camera/rgb/image_rect_color", 1, imageCb);
@@ -164,6 +186,19 @@ int main(int argc, char **argv)
 
             dobot_cloud_pub.publish(dobot_cloud_ros);
           }
+          else if (mouseEvent.event == cv::EVENT_RBUTTONDBLCLK) {
+            std::cout << "hello" << std::endl;
+            pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+            icp.setInputCloud(dobot_cloud_.makeShared());
+            icp.setInputTarget(detect_cloud_.makeShared());
+
+            pcl::PointCloud<pcl::PointXYZ> Final;
+            icp.align(Final);
+
+            Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity ();
+            transformation_matrix = icp.getFinalTransformation ().cast<double>();
+            //print4x4Matrix (transformation_matrix);
+          }
     }
 
     if (debug_distance_)
@@ -179,8 +214,10 @@ int main(int argc, char **argv)
         std::cout << i+1 << " --- " << i+2 << ":" << detect_distances_[i] << std::endl;
       }
       std::cout << std::endl;
+
     }
 
+    br.sendTransform(tf::StampedTransform(transform2, ros::Time::now(), robot_frame_, camera_frame_));
     ros::spinOnce();
     //loop_rate.sleep();
     }
